@@ -1,3 +1,5 @@
+This is the official code repository for the paper "LLMs Leveraging Alternative Formats for Enhanced Reasoning and Communication". This repository is built upon [AgentVerse](https://github.com/OpenBMB/AgentVerse).
+
 ## Getting Started
 
 ### Installation
@@ -30,3 +32,5 @@ Here is an example of how to run the scripts. This script implement **Single-LLM
 ```bash
 python scripts/aqua/autoform-gemini.py
 ```
+
+You can try other scripts to reproduce the results reported in our paper.
