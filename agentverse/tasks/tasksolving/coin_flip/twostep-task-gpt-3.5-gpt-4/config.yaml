@@ -1,0 +1,191 @@
+cnt_agents: &cnt_agents 3
+max_turn: &max_turn 1
+max_criticizing_rounds: 0
+
+prompts:
+  role_assigner_prepend_prompt: &role_assigner_prepend_prompt |-
+
+  role_assigner_append_prompt: &role_assigner_append_prompt |-
+    Generate a list of ${cnt_critic_agents} names. Here is an example of your response:
+    EXAMPLE:
+    1. Alice
+    2. Bob
+    3. Charli
+    ...
+# You are the leader of a group, now you are facing a problem:
+# ```
+# ${task_description}
+# ```
+
+# You can recruit ${cnt_critic_agents} people to solve the logic problem. What people will you recruit?
+
+# Here are some suggestion:
+# ${advice}
+
+# ## Response Format Guidance
+# You should respond with a list of expert names. For example:
+# 1. Alice
+# 2. Bob
+# 3. Charlie
+# ...
+
+# Only respond with the names. Do not include your reason.
+
+  solver_prepend_prompt: &solver_prepend_prompt |-
+
+  # Messages from the solver and critics will be filled here in the code.
+
+  solver_append_prompt: &solver_append_prompt |-
+    Here are several similar problems:
+    ---
+    ${task_description}
+    ---
+    
+    RESPONSE GUIDELINE:
+    1. You should find a generic and unified representation form that can represent the state or conditions of every single similar problem. It could be code, pseudocode, JSON, markdown table, logical operators, or math equation. It's not necessary for this representation form to be able to represent all the tasks above together.
+    2. Your response should only contains one single unified representation form. This form should be able to represent every single similar problem but you should not use it to solve any of the problems. This form also should not contain any detailed information about any specific problem.
+# Using these information, can you provide the correct solution to the math problem? Explain your reasoning and solve the problem step by step. Your final answer should be a single integer, which is the number of choice, in the form \boxed{answer}, at the end of your response.
+
+  critic_prepend_prompt: &critic_prepend_prompt |-
+
+  critic_append_prompt: &critic_append_prompt |-
+    Solve the problem presented below:
+    ---
+    ${task_description}
+    ---
+    
+    RESPONSE GUIDELINES:
+    1. Initial State Representation: A generic representation form of the state or conditions of the problem have been provided above. Use this representation form to provide a clear and detailed representation of initial state of the problem.
+    2. Step-by-Step Solution Process: Progressively update the state representation as you work through each step of the solution. This should include all logical reasoning and calculations leading to the final answer.
+    3. Concluding with the Answer: End your response with "Answer: {answer}", where {answer} is the final result of your problem-solving process. The {answer} must be “yes" or "no" and nothing else.
+
+  evaluator_prepend_prompt: &evaluator_prepend_prompt |-
+    Problem:
+    ```
+    ${task_description}
+    ```
+
+    Solution: 
+    ```
+    ${solution}
+    ```
+
+    You are a logic problem lover. Above is a logic problem and a solution. Check whether the solution and the deduction is correct. If the deduction is wrong, you should explain why it is wrong, but do not give your solution. When it is correct, output a correctness of 1 and why it is correct.
+
+  evaluator_append_prompt: &evaluator_append_prompt |-
+    You should respond in the following format:
+    Correctness: (0 or 1, 0 is wrong, and 1 is correct)
+    Response: (explain in details why it is wrong or correct. do not provide your solution)
+
+    
+
+
+name: pipeline
+
+
+environment:
+  env_type: task-basic
+  max_turn: *max_turn
+  rule:
+    role_assigner:
+      type: dummy
+      cnt_agents: *cnt_agents
+    decision_maker:
+      type: model-many-single
+      max_inner_turns: 0
+    executor:
+      type: none
+    evaluator:
+      type: dummy-true
+
+agents:
+  - #role_assigner_agent:
+    agent_type: role_assigner
+    name: role assigner
+    max_retry: 1000
+    prepend_prompt_template: *role_assigner_prepend_prompt
+    append_prompt_template: *role_assigner_append_prompt
+    memory:
+      memory_type: chat_history
+    llm:
+      llm_type: gpt-4
+      model: gpt-4-1106
+      temperature: 0
+      max_tokens: 512
+    output_parser:
+      type: role_assigner
+
+  - #solver_agent:
+    agent_type: solver
+    name: Planner
+    max_retry: 1000
+    prepend_prompt_template: *solver_prepend_prompt
+    append_prompt_template: *solver_append_prompt
+    memory:
+      memory_type: chat_history
+    llm:
+      llm_type: gpt-3.5-turbo
+      model: gpt-3.5-turbo-1106
+      max_tokens: 4096
+      temperature: 0
+    output_parser:
+      type: mgsm
+
+  - #critic_agents:
+    agent_type: critic
+    name: Critic 1
+    max_retry: 1000
+    max_history: 20
+    role_description: |-
+      Waiting to be assigned.
+    prepend_prompt_template: *critic_prepend_prompt
+    append_prompt_template: *critic_append_prompt
+    memory:
+      memory_type: chat_history
+      add_sender_prefix: false
+    flatten: false
+    llm:
+      llm_type: gpt-4
+      model: gpt-4-1106
+      temperature: 0
+      max_tokens: 4096
+    output_parser:
+      type: logic-puzzle-debate-critic
+
+  - #executor_agent:
+    agent_type: executor
+    name: Executor
+    max_retry: 1000
+    memory:
+      memory_type: chat_history
+    llm:
+      llm_type: gpt-4
+      model: gpt-4-1106
+      temperature: 0
+      max_tokens: 1024
+    output_parser:
+      type: mgsm
+
+  - #evaluator_agent:
+    agent_type: evaluator
+    name: Evaluator
+    max_retry: 1000
+    role_description: |-
+      Evaluator
+    prepend_prompt_template: *evaluator_prepend_prompt
+    append_prompt_template: *evaluator_append_prompt
+    memory:
+      memory_type: chat_history
+    llm:
+      llm_type: gpt-4
+      model: gpt-4-1106
+      temperature: 0.3
+      max_tokens: 1024
+    output_parser:
+      type: mgsm-evaluator
+      dimensions:
+        - Correctness
+
+
+tools:
+

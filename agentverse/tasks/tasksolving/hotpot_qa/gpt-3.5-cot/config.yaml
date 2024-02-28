@@ -1,0 +1,227 @@
+cnt_agents: &cnt_agents 3
+max_turn: &max_turn 1
+max_criticizing_rounds: 0
+
+prompts:
+  role_assigner_prepend_prompt: &role_assigner_prepend_prompt |-
+
+  role_assigner_append_prompt: &role_assigner_append_prompt |-
+    Generate a list of ${cnt_critic_agents} names. Here is an example of your response:
+    EXAMPLE:
+    1. Alice
+    2. Bob
+    3. Charli
+    ...
+# You are the leader of a group, now you are facing a problem:
+# ```
+# ${task_description}
+# ```
+
+# You can recruit ${cnt_critic_agents} people to solve the logic problem. What people will you recruit?
+
+# Here are some suggestion:
+# ${advice}
+
+# ## Response Format Guidance
+# You should respond with a list of expert names. For example:
+# 1. Alice
+# 2. Bob
+# 3. Charlie
+# ...
+
+# Only respond with the names. Do not include your reason.
+
+  solver_prepend_prompt: &solver_prepend_prompt |-
+
+
+  # Messages from the solver and critics will be filled here in the code.
+  
+  solver_append_prompt: &solver_append_prompt |-
+    ${task_description}
+
+    At the end of your response, you must give your answer in the form of "the answer is: {number}", where {number} is the answer number. Now solve the problem step-by-step.
+
+# Using these information, can you provide the correct solution to the math problem? Explain your reasoning and solve the problem step by step. Your final answer should be a single integer, which is the number of choice, in the form \boxed{answer}, at the end of your response.
+
+  critic_prepend_prompt: &critic_prepend_prompt |-
+    You are ${agent_name}. Together with ${all_roles}, you are providing accurate answer to the user. Each of you will be provided parts of the contexts and a shared question. 
+
+    EXAMPLE 1
+    ---
+    # Context
+    - **Arthur's Magazine**. Arthur's Magazine (1844-1846) was an American literary periodical published in Philadelphia in the 19th century. Edited by T.S. Arthur, it featured work by Edgar A. Poe, J.H. Ingraham, Sarah Josepha Hale, Thomas G. Spear, and others. In May 1846 it was merged into "Godey's Lady's Book".
+    - **First for Women**. First for Women is a woman's magazine published by Bauer Media Group in the USA. The magazine was started in 1989. It is based in Englewood Cliffs, New Jersey. In 2011 the circulation of the magazine was 1,310,696 copies.
+    - ...
+
+    # Question
+    Which magazine was started first Arthur's Magazine or First for Women?
+    ---
+    The answer should be "Arthur's Magazine".
+
+    EXAMPLE 2
+    ---
+    # Context
+    - The 2014-15 Ukrainian Hockey Championship was the 23rd season of the Ukrainian Hockey Championship. Only four teams participated in the league this season, because of the instability in Ukraine and that most of the clubs had economical issues. Generals Kiev was the only team that participated in the league the previous season, and the season started first after the year-end of 2014. The regular season included just 12 rounds, where all the teams went to the semifinals. In the final, ATEK Kiev defeated the regular season winner HK Kremenchuk.
+    - ...(other unrelevant contexts)
+
+    # Question
+    Which magazine was started first Arthur's Magazine or First for Women?
+    ---
+    You don't have relevant context on the clue, so you need to communication with others.
+
+    Now the user gives you some contexts and the question:
+    ---
+    # Context
+    ${knowledge}
+
+    # Question
+    ${task_description}
+    ---
+
+    Given that each individual, including yourself, possesses unique contexts, it's essential to actively share and discuss this information with others to formulate a complete answer. Your specific context is unknown to others unless explicitly communicated. This collaborative effort is key to reaching an accurate answer based on the amalgamation of everyone's distinct contexts.
+    
+    When you have reached the final answer, conclude it with "Answer: {xxx}", where "xxx" will be extracted and compared with ground truth. To end the conversation, all the players should end their responses with "<A>xxx</A>". 
+
+    You are ${agent_name}. Now communicate with ${all_roles} to give the answer.
+
+  critic_append_prompt: &critic_append_prompt |-
+# RESPONSE GUIDELINES:
+# 1. Initial State Representation: Begin by providing a clear and detailed representation of the initial state or conditions of the problem. Explain it to make sure the other member understand it.
+# 2. Step-by-Step Solution Process: Progressively update the state representation as you work through each step of the solution. This should include all logical reasoning and calculations leading to the final answer.
+# 3. Concluding with the Answer: Once a solution is reached, end your response with "Answer: {answer}", where {answer} is the final result of your problem-solving process. The conversation ends only when all members have presented the same answer.
+# 4. Your response should represent only a single turn of you in the conversation. It should also be short and contain as much information as possible.
+# 5. Check other member's answer by examining the reasoning process. Correct it if it's wrong.
+# 6. Make each turn informative to reduce the number of total turns.
+# 7. Since you and others are intelligent agents rather than human, you have your own communication form. At the beginning of the conversation, specify the communication form to optimize your interactions. It can be code, emoji, structured language, hybrid of different forms, etc. Prioritize efficiency and effectiveness in your communication form.
+# 8. Add your name as the prefix of your response.
+
+  evaluator_prepend_prompt: &evaluator_prepend_prompt |-
+    Problem:
+    ```
+    ${task_description}
+    ```
+
+    Solution: 
+    ```
+    ${solution}
+    ```
+
+    You are a logic problem lover. Above is a logic problem and a solution. Check whether the solution and the deduction is correct. If the deduction is wrong, you should explain why it is wrong, but do not give your solution. When it is correct, output a correctness of 1 and why it is correct.
+    
+  evaluator_append_prompt: &evaluator_append_prompt |-
+    You should respond in the following format:
+    Correctness: (0 or 1, 0 is wrong, and 1 is correct)
+    Response: (explain in details why it is wrong or correct. do not provide your solution)
+
+    
+
+
+name: pipeline
+
+
+environment:
+  env_type: task-basic
+  max_turn: *max_turn
+  rule:
+    role_assigner:
+      type: role_description
+      cnt_agents: *cnt_agents
+    decision_maker:
+      type: debate
+      max_inner_turns: 0
+    executor:
+      type: none
+    evaluator:
+      type: dummy-true
+
+agents:
+  - #role_assigner_agent:
+    agent_type: role_assigner
+    name: role assigner
+    max_retry: 1000
+    prepend_prompt_template: *role_assigner_prepend_prompt
+    append_prompt_template: *role_assigner_append_prompt
+    memory:
+      memory_type: chat_history
+    llm:
+      llm_type: gpt-4
+      model: gpt-4-1106
+      temperature: 0
+      max_tokens: 512
+    output_parser:
+      type: role_assigner
+      
+  - #solver_agent:
+    agent_type: solver
+    name: Planner
+    max_retry: 1000
+    prepend_prompt_template: *solver_prepend_prompt
+    append_prompt_template: *solver_append_prompt
+    memory:
+      memory_type: chat_history
+    llm:
+      llm_type: gpt-3.5-turbo
+      model: gpt-3.5-turbo-1106
+      max_tokens: 1024
+      temperature: 0
+    output_parser:
+      type: mgsm
+
+  - #critic_agents:
+    agent_type: critic
+    name: Critic 1
+    max_retry: 1000
+    max_history: 20
+    role_description: |-
+      Waiting to be assigned.
+    prepend_prompt_template: *critic_prepend_prompt
+    append_prompt_template: *critic_append_prompt
+    memory:
+      memory_type: chat_history
+      add_sender_prefix: false
+      add_sender_in_message: true
+    flatten: false
+    llm:
+      llm_type: gpt-3.5-turbo
+      model: gpt-3.5-turbo-1106
+      temperature: 0
+    output_parser:
+      type: qa-critic
+
+  - #executor_agent:
+    agent_type: executor
+    name: Executor
+    max_retry: 1000
+    memory:
+      memory_type: chat_history
+    llm:
+      llm_type: gpt-4
+      model: gpt-4-1106
+      temperature: 0
+      max_tokens: 1024
+    output_parser:
+      type: mgsm
+
+  - #evaluator_agent:
+    agent_type: evaluator
+    name: Evaluator
+    max_retry: 1000
+    role_description: |-
+      Evaluator
+    prepend_prompt_template: *evaluator_prepend_prompt
+    append_prompt_template: *evaluator_append_prompt
+    memory:
+      memory_type: chat_history
+    llm:
+      llm_type: gpt-4
+      model: gpt-4-1106
+      temperature: 0.3
+      max_tokens: 1024
+    output_parser:
+      type: mgsm-evaluator
+      dimensions:
+        - Correctness
+
+
+tools:
+
