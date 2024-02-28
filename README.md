@@ -5,8 +5,9 @@
 Clone the repository and install the dependencies.
 
 ```bash
-git clone xxx
-cd xxx
+git clone git@github.com:thunlp/AutoForm.git
+cd AutoForm
+# Python>=3.10
 pip install -r requirements.txt
 ```
 
